@@ -1,0 +1,13 @@
+services:
+  atlas-core:
+    build: .
+    container_name: atlas-core-banking
+    restart: unless-stopped
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    env_file:
+      - .env
+
