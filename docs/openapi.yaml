@@ -1,0 +1,61 @@
+openapi: 3.0.3
+info:
+  title: Atlas Core Banking API
+  description: Motor central de gestão de contas, multi-wallets, câmbios e liquidação do ecossistema NeXFlowX.
+  version: 1.0.0
+servers:
+  - url: https://api.atlasglobal.digital/api/v1
+    description: Production Server
+  - url: http://localhost:8083/api/v1
+    description: Local Development Server
+
+paths:
+  /health:
+    get:
+      summary: Health Check do Sistema
+      operationId: getHealthCheck
+      tags:
+        - Diagnostics
+      responses:
+        '200':
+          description: Sistema operacional
+
+  /internal/webhooks/proxy:
+    post:
+      summary: Receção de Fundos Fiduciários da Proxy
+      operationId: processProxyWebhook
+      tags:
+        - Internal Webhooks
+      security:
+        - ProxySecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reference:
+                  type: string
+                status:
+                  type: string
+                amount:
+                  type: number
+                currency:
+                  type: string
+                method:
+                  type: string
+                userId:
+                  type: string
+      responses:
+        '201':
+          description: Ledger atualizado com sucesso
+        '401':
+          description: Assinatura secreta inválida
+
+components:
+  securitySchemes:
+    ProxySecret:
+      type: apiKey
+      in: header
+      name: x-proxy-secret

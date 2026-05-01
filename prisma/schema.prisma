@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // As linhas 'url' e 'directUrl' foram banidas daqui. O Prisma lê do prisma.config.ts!
+}
+
+// ==========================================
+// 🏢 ORGANIZAÇÕES & ACESSOS (RBAC)
+// ==========================================
+model Organization {
+  id          String         @id @default(uuid())
+  name        String         @unique // Ex: "NEXOR"
+  apiKey      String?        @unique // Chave para a NEXOR pedir Payouts via API
+  
+  users       User[]         // Os Sellers associados a esta Organização
+  operators   OrgOperator[]  // A Equipa que gere a Organização
+  
+  createdAt   DateTime       @default(now())
+}
+
+enum OrgRole {
+  ADMIN      // Pode alterar taxas manuais e configurações
+  OPERATOR   // Pode ver movimentos e solicitar payouts
+}
+
+model OrgOperator {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  email          String       @unique
+  passwordHash   String
+  role           OrgRole      @default(OPERATOR)
+}
+
+// ==========================================
+// 👤 UTILIZADORES (Sellers & Clientes Diretos)
+// ==========================================
+model User {
+  id             String        @id @default(uuid())
+  organizationId String?       // Se preenchido, este utilizador "pertence" à NEXOR, etc.
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  
+  email          String?       @unique // Opcional no KYC0
+  phone          String?       @unique
+  fullName       String?
+  tier           TierLevel     @default(TIER_0_UNVERIFIED)
+  status         AccountStatus @default(ACTIVE)
+  
+  wallets        Wallet[]
+  transactions   Transaction[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+enum TierLevel {
+  TIER_0_UNVERIFIED // Registado via Proxy sem KYC (Ex: Seller NEXOR base)
+  TIER_1_BASIC      // Liberado para SWAP / OFFRAMP
+  TIER_2_VERIFIED
+  TIER_3_CORPORATE
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum Currency {
+  EUR
+  BRL
+  USDT
+  USD
+}
+
+// ==========================================
+// 💼 CARTEIRAS MULTI-MOEDA & WEB3
+// ==========================================
+model Wallet {
+  id               String        @id @default(uuid())
+  walletReference  String        @unique // Ex: "usr123_EUR"
+  userId           String
+  user             User          @relation(fields: [userId], references: [id])
+  currency         Currency
+
+  // Integração Web3 (Turnkey)
+  blockchainAddress String?      @unique
+  turnkeyWalletId   String?      @unique
+
+  balanceIncoming  Decimal       @default(0.00) @db.Decimal(20, 6)
+  balancePending   Decimal       @default(0.00) @db.Decimal(20, 6)
+  balanceAvailable Decimal       @default(0.00) @db.Decimal(20, 6)
+  balanceBlocked   Decimal       @default(0.00) @db.Decimal(20, 6)
+
+  transactions     Transaction[]
+  
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  @@unique([userId, currency]) 
+}
+
+// ==========================================
+// 📈 MOTOR DE TAXAS (FEE ENGINE)
+// ==========================================
+model FeeSchedule {
+  id              String          @id @default(uuid())
+  tier            TierLevel
+  transactionType TransactionType
+  currency        Currency?       // Se nulo, aplica a todas as moedas
+  
+  percentageFee   Decimal         @default(0.00) @db.Decimal(5, 4) // 0.0150 = 1.5%
+  fixedFee        Decimal         @default(0.00) @db.Decimal(20, 6) // Ex: 1.00 USD fixo
+  isManualOverride Boolean        @default(false) // Se true, o Admin da Org ditou isto
+
+  @@unique([tier, transactionType, currency])
+}
+
+// ==========================================
+// 🧾 LEDGER & CONSOLIDAÇÃO (BATCHES)
+// ==========================================
+enum TransactionType {
+  PROXY_INCOMING
+  SETTLEMENT
+  PAYOUT         // Ex: Payout USDT
+  SWAP           // Ex: EUR -> USDT
+  TRANSFER
+  FEE
+}
+
+enum TransactionStatus {
+  INCOMING
+  PENDING
+  COMPLETED
+  BLOCKED
+  FAILED
+}
+
+model SettlementBatch {
+  id            String        @id @default(uuid())
+  batchNumber   String        @unique
+  processedAt   DateTime      @default(now())
+  totalAmount   Decimal       @db.Decimal(20, 6)
+  currency      Currency
+  transactions  Transaction[]
+}
+
+model Transaction {
+  id               String            @id @default(uuid())
+  walletId         String
+  wallet           Wallet            @relation(fields: [walletId], references: [id])
+  userId           String
+  user             User              @relation(fields: [userId], references: [id])
+  
+  type             TransactionType
+  status           TransactionStatus
+  
+  amount           Decimal           @db.Decimal(20, 6)
+  feeApplied       Decimal           @default(0.00) @db.Decimal(20, 6) // Quanto lucrámos aqui
+  currency         Currency
+  
+  proxyReference   String?           @unique
+  onrampReference  String?           @unique
+  description      String?
+  
+  batchId          String?
+  batch            SettlementBatch?  @relation(fields: [batchId], references: [id])
+
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  @@index([status])
+  @@index([walletReference])
+}
