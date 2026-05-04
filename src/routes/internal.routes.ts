@@ -4,7 +4,7 @@ import { requireProxySecret } from '../middlewares/proxyAuth.middleware';
 
 const router = Router();
 
-// Rota protegida pela nossa barreira de segurança
+// Rota blindada: Apenas a NeXFlowX Proxy com a chave certa consegue injetar os dólares
 router.post('/webhooks/proxy', requireProxySecret, WebhookController.handleProxyIncoming);
 
 export default router;

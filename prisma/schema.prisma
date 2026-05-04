@@ -3,8 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  // As linhas 'url' e 'directUrl' foram banidas daqui. O Prisma lê do prisma.config.ts!
+  provider = "postgresql"
 }
 
 // ==========================================
@@ -14,16 +13,18 @@ model Organization {
   id          String         @id @default(uuid())
   name        String         @unique // Ex: "NEXOR"
   apiKey      String?        @unique // Chave para a NEXOR pedir Payouts via API
-  
+
   users       User[]         // Os Sellers associados a esta Organização
   operators   OrgOperator[]  // A Equipa que gere a Organização
-  
+  tickets     OperationTicket[] // Histórico de tickets da organização
+
   createdAt   DateTime       @default(now())
 }
 
 enum OrgRole {
-  ADMIN      // Pode alterar taxas manuais e configurações
-  OPERATOR   // Pode ver movimentos e solicitar payouts
+  ADMIN           // Pode alterar taxas manuais e configurações
+  OPERATOR        // Pode ver movimentos e solicitar payouts
+  ACCOUNT_MANAGER // Visão Read-Only dos Sellers e criação de Tickets
 }
 
 model OrgOperator {
@@ -33,6 +34,8 @@ model OrgOperator {
   email          String       @unique
   passwordHash   String
   role           OrgRole      @default(OPERATOR)
+
+  ticketsCreated OperationTicket[] // Tickets gerados por este operador/gestor
 }
 
 // ==========================================
@@ -42,15 +45,24 @@ model User {
   id             String        @id @default(uuid())
   organizationId String?       // Se preenchido, este utilizador "pertence" à NEXOR, etc.
   organization   Organization? @relation(fields: [organizationId], references: [id])
-  
+
+  // Identidade & Contactos
+  nickname       String?       @unique // O "Vulgo" escolhido no KYC-1
   email          String?       @unique // Opcional no KYC0
   phone          String?       @unique
+  telegramId     String?       @unique // Integração com bots/notificações
   fullName       String?
+
+  // Credenciais (Fluxo Claim Account)
+  passwordHash           String? // Nulo até a conta ser "reivindicada"
+  requiresPasswordChange Boolean @default(true) // Força a troca no 1º login
+
   tier           TierLevel     @default(TIER_0_UNVERIFIED)
   status         AccountStatus @default(ACTIVE)
-  
+
   wallets        Wallet[]
   transactions   Transaction[]
+  tickets        OperationTicket[] // Tickets referentes a este Seller
 
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -80,26 +92,26 @@ enum Currency {
 // 💼 CARTEIRAS MULTI-MOEDA & WEB3
 // ==========================================
 model Wallet {
-  id               String        @id @default(uuid())
-  walletReference  String        @unique // Ex: "usr123_EUR"
-  userId           String
-  user             User          @relation(fields: [userId], references: [id])
-  currency         Currency
+  id                String        @id @default(uuid())
+  walletReference   String        @unique // Ex: "usr123_EUR"
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  currency          Currency
 
   // Integração Web3 (Turnkey)
-  blockchainAddress String?      @unique
-  turnkeyWalletId   String?      @unique
+  blockchainAddress String?       @unique
+  turnkeyWalletId   String?       @unique
 
-  balanceIncoming  Decimal       @default(0.00) @db.Decimal(20, 6)
-  balancePending   Decimal       @default(0.00) @db.Decimal(20, 6)
-  balanceAvailable Decimal       @default(0.00) @db.Decimal(20, 6)
-  balanceBlocked   Decimal       @default(0.00) @db.Decimal(20, 6)
+  balanceIncoming   Decimal       @default(0.00) @db.Decimal(20, 6)
+  balancePending    Decimal       @default(0.00) @db.Decimal(20, 6)
+  balanceAvailable  Decimal       @default(0.00) @db.Decimal(20, 6)
+  balanceBlocked    Decimal       @default(0.00) @db.Decimal(20, 6)
 
-  transactions     Transaction[]
-  
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  @@unique([userId, currency]) 
+  transactions      Transaction[]
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  @@unique([userId, currency])
 }
 
 // ==========================================
@@ -110,7 +122,7 @@ model FeeSchedule {
   tier            TierLevel
   transactionType TransactionType
   currency        Currency?       // Se nulo, aplica a todas as moedas
-  
+
   percentageFee   Decimal         @default(0.00) @db.Decimal(5, 4) // 0.0150 = 1.5%
   fixedFee        Decimal         @default(0.00) @db.Decimal(20, 6) // Ex: 1.00 USD fixo
   isManualOverride Boolean        @default(false) // Se true, o Admin da Org ditou isto
@@ -139,12 +151,12 @@ enum TransactionStatus {
 }
 
 model SettlementBatch {
-  id            String        @id @default(uuid())
-  batchNumber   String        @unique
-  processedAt   DateTime      @default(now())
-  totalAmount   Decimal       @db.Decimal(20, 6)
-  currency      Currency
-  transactions  Transaction[]
+  id           String        @id @default(uuid())
+  batchNumber  String        @unique
+  processedAt  DateTime      @default(now())
+  totalAmount  Decimal       @db.Decimal(20, 6)
+  currency     Currency
+  transactions Transaction[]
 }
 
 model Transaction {
@@ -153,24 +165,63 @@ model Transaction {
   wallet           Wallet            @relation(fields: [walletId], references: [id])
   userId           String
   user             User              @relation(fields: [userId], references: [id])
-  
+
   type             TransactionType
   status           TransactionStatus
-  
+
   amount           Decimal           @db.Decimal(20, 6)
   feeApplied       Decimal           @default(0.00) @db.Decimal(20, 6) // Quanto lucrámos aqui
   currency         Currency
-  
+
   proxyReference   String?           @unique
   onrampReference  String?           @unique
   description      String?
-  
+
   batchId          String?
   batch            SettlementBatch?  @relation(fields: [batchId], references: [id])
 
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
-  
+
   @@index([status])
-  @@index([walletReference])
+  @@index([walletId])
+}
+
+// ==========================================
+// 🎫 SISTEMA DE TICKETS (Comunicação Interna NEXOR)
+// ==========================================
+model OperationTicket {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  
+  creatorId       String       // ID do Account Manager que criou o ticket
+  creator         OrgOperator  @relation(fields: [creatorId], references: [id])
+
+  targetUserId    String?      // O Seller alvo da ação
+  targetUser      User?        @relation(fields: [targetUserId], references: [id])
+
+  type            TicketType
+  status          TicketStatus @default(OPEN)
+  description     String       // Ex: "Cliente solicita levantamento de 5000 USDT"
+  
+  resolutionNotes String?      // Notas do Operador que resolveu
+  resolvedById    String?      // ID do Admin/Operador que fechou o ticket (pode ser adicionada relação futura)
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+enum TicketType {
+  MANUAL_WITHDRAWAL  // Pedido de saque
+  TIER_UPGRADE       // Revisão de documentos para subir de KYC
+  FEE_ADJUSTMENT     // Pedido para alterar as taxas do Seller
+  SUPPORT            // Suporte geral
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
 }
