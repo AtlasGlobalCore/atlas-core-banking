@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { WebhookController } from '../controllers/webhook.controller';
 import { requireProxySecret } from '../middlewares/proxyAuth.middleware';
+import { WebhookController } from '../controllers/webhook.controller';
 
 const router = Router();
 
-// Rota blindada: Apenas a NeXFlowX Proxy com a chave certa consegue injetar os dólares
-router.post('/webhooks/proxy', requireProxySecret, WebhookController.handleProxyIncoming);
+// Endpoint que recebe as liquidações da NeXFlowX Proxy
+router.post('/webhooks/proxy', requireProxySecret, WebhookController.handleProxyWebhook);
 
 export default router;

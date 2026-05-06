@@ -1,61 +1,116 @@
-openapi: 3.0.3
+openapi: 3.0.0
 info:
-  title: Atlas Core Banking API
-  description: Motor central de gestão de contas, multi-wallets, câmbios e liquidação do ecossistema NeXFlowX.
-  version: 1.0.0
+  title: NeXFlowX Atlas Core API
+  version: "1.0.0"
+  description: API Oficial do Core Banking Institucional (Gestão de Tesouraria, Acumulados Diários e Payouts).
 servers:
   - url: https://api.atlasglobal.digital/api/v1
-    description: Production Server
-  - url: http://localhost:8083/api/v1
-    description: Local Development Server
+    description: Servidor de Produção (Atlas Global)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []
 
 paths:
-  /health:
-    get:
-      summary: Health Check do Sistema
-      operationId: getHealthCheck
-      tags:
-        - Diagnostics
-      responses:
-        '200':
-          description: Sistema operacional
-
-  /internal/webhooks/proxy:
+  /auth/login:
     post:
-      summary: Receção de Fundos Fiduciários da Proxy
-      operationId: processProxyWebhook
-      tags:
-        - Internal Webhooks
-      security:
-        - ProxySecret: []
+      summary: Login do Seller
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                reference:
-                  type: string
-                status:
-                  type: string
-                amount:
-                  type: number
-                currency:
-                  type: string
-                method:
-                  type: string
-                userId:
-                  type: string
+                nickname: { type: string, example: "NeXor_A1B2" }
+                password: { type: string, example: "NeX-a1b2@2026" }
+      responses:
+        '200':
+          description: Retorna Token JWT
+
+  /wallet/balances:
+    get:
+      summary: Fotografia do Cofre do Utilizador
+      responses:
+        '200':
+          description: Sucesso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        currency: { type: string, example: "USDT" }
+                        walletReference: { type: string }
+                        balanceAvailable: { type: number, description: "Livre para Levantamento/Payout" }
+                        balanceIncoming: { type: number, description: "Cativo - Aguarda Clearing T+1/T+2" }
+                        balancePending: { type: number, description: "Em Trânsito - Saques solicitados" }
+                        balanceBlocked: { type: number, description: "Retido - Compliance/Chargebacks" }
+
+  /wallet/statement/daily:
+    get:
+      summary: Viewer do Acumulado Diário (Depósitos B2B)
+      description: Retorna o histórico de faturação agrupado por dia (Ex "Depósito NEXOR - Data"). Evita o ruído de listar transações individuais.
+      parameters:
+        - in: query
+          name: wallet_reference
+          required: true
+          schema: { type: string }
+        - in: query
+          name: month
+          schema: { type: integer, example: 5 }
+        - in: query
+          name: year
+          schema: { type: integer, example: 2026 }
+      responses:
+        '200':
+          description: Lista do Acumulado Diário
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet_reference: { type: string }
+                  statements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date, example: "2026-05-04" }
+                        type: { type: string, example: "PROXY_INCOMING" }
+                        description: { type: string, example: "Depósito NEXOR - 2026-05-04" }
+                        total_volume: { type: number, example: 1540.50 }
+                        transaction_count: { type: integer, example: 142 }
+                        status: { type: string, example: "INCOMING" }
+
+  /payouts:
+    post:
+      summary: Solicitar Saque (Crypto, SEPA, PIX)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: { type: number, example: 1000 }
+                currency: { type: string, example: "USDT" }
+                method: { type: string, enum: [CRYPTO, SEPA, PIX] }
+                targetDestination: { type: string, example: "0x..." }
       responses:
         '201':
-          description: Ledger atualizado com sucesso
-        '401':
-          description: Assinatura secreta inválida
+          description: Payout solicitado. Move de Available para Pending. Se TIER_0, cria Ticket Automático.
 
-components:
-  securitySchemes:
-    ProxySecret:
-      type: apiKey
-      in: header
-      name: x-proxy-secret
+  /tickets:
+    get:
+      summary: Consulta o estado de Payouts manuais e KYC
+    post:
+      summary: Abre um pedido de suporte ou envio de KYC
