@@ -1,3 +1,4 @@
+import prisma from '../lib/prisma';
 import { Request, Response } from 'express';
 import { TransactionType, TransactionStatus, Currency } from '@prisma/client';
 import { prisma } from '../config/database';

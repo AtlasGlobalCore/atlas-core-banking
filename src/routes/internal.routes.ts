@@ -1,10 +1,9 @@
 import { Router } from 'express';
-import { requireProxySecret } from '../middlewares/proxyAuth.middleware';
-import { WebhookController } from '../controllers/webhook.controller';
+import { releaseFunds } from '../controllers/settlement.controller';
 
 const router = Router();
 
-// Endpoint que recebe as liquidações da NeXFlowX Proxy
-router.post('/webhooks/proxy', requireProxySecret, WebhookController.handleProxyWebhook);
+// Endpoint para Operadores aprovarem liquidações para as Wallets dos Merchants
+router.post('/settlement/release', releaseFunds);
 
 export default router;

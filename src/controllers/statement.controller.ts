@@ -1,3 +1,4 @@
+import prisma from '../lib/prisma';
 import { Request, Response } from 'express';
 import { prisma } from '../config/database';
 
