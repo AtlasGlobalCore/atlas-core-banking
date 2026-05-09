@@ -10,13 +10,13 @@ datasource db {
 // 🏢 ORGANIZAÇÕES & ACESSOS (RBAC)
 // ==========================================
 model Organization {
-  id          String            @id @default(uuid())
-  name        String            @unique
-  apiKey      String?           @unique
-  users       User[]
-  operators   OrgOperator[]
-  tickets     OperationTicket[]
-  createdAt   DateTime          @default(now())
+  id        String            @id @default(uuid())
+  name      String            @unique
+  apiKey    String?           @unique
+  users     User[]
+  operators OrgOperator[]
+  tickets   OperationTicket[]
+  createdAt DateTime          @default(now())
 }
 
 enum OrgRole {
@@ -32,6 +32,7 @@ model OrgOperator {
   email          String       @unique
   passwordHash   String
   role           OrgRole      @default(OPERATOR)
+  storeId        String?      // Vínculo opcional a uma store específica
   ticketsCreated OperationTicket[]
 }
 
@@ -98,7 +99,7 @@ model Wallet {
   transactions      Transaction[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
-  
+
   @@unique([userId, currency])
 }
 
@@ -206,54 +207,52 @@ enum TicketStatus {
 // 🛒 MÓDULO E-COMMERCE, CHECKOUT & CRM
 // ==========================================
 model Store {
-  id             String        @id @default(uuid())
-  userId         String
-  user           User          @relation(fields: [userId], references: [id])
-  name           String
-  slug           String        @unique
-  branding       Json?
-  allowedMethods Json?       // Ex: { "PIX": true, "STRIPE": true, "MBWAY": false }
-  apiKey         String?       @unique  // NOVO: Chave para o Merchant usar a API S2S
-  status         AccountStatus @default(ACTIVE)
-  paymentLinks   PaymentLink[]
-  customers      Customer[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  name            String
+  slug            String        @unique
+  branding        Json?
+  allowedMethods  Json?         // Ex: { "defaultCurrency": "EUR", "providers": {"STRIPE_PT_001": ["card"]} }
+  publishableKey  String?       @unique // Usada no atlas-checkout-web
+  secretKey       String?       @unique // Usada na API do Merchant
+  status          AccountStatus @default(ACTIVE)
+  paymentLinks    PaymentLink[]
+  customers       Customer[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model PaymentLink {
-  id             String        @id @default(uuid())
-  storeId        String?
-  store          Store?        @relation(fields: [storeId], references: [id])
-  userId         String
-  user           User          @relation(fields: [userId], references: [id])
-  title          String
-  description    String?
-  amount         Decimal       @db.Decimal(20, 6)
-  currency       Currency
-  isActive       Boolean       @default(true)
-  isReusable     Boolean       @default(false)
-  
-  // NOVOS: Campos de Redirecionamento S2S
-  successUrl     String?
-  cancelUrl      String?
-  webhookUrl     String?
-  
-  transactions   Transaction[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  storeId         String?
+  store           Store?        @relation(fields: [storeId], references: [id])
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  title           String
+  description     String?
+  amount          Decimal       @db.Decimal(20, 6)
+  currency        Currency
+  isActive        Boolean       @default(true)
+  isReusable      Boolean       @default(false)
+  successUrl      String?
+  cancelUrl       String?
+  webhookUrl      String?
+  transactions    Transaction[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
 
 model Customer {
-  id             String        @id @default(uuid())
-  storeId        String
-  store          Store         @relation(fields: [storeId], references: [id])
-  name           String
-  email          String
-  document       String?
-  phone          String?
-  transactions   Transaction[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(uuid())
+  storeId         String
+  store           Store         @relation(fields: [storeId], references: [id])
+  name            String
+  email           String
+  document        String?
+  phone           String?
+  transactions    Transaction[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   @@unique([storeId, email])
 }
