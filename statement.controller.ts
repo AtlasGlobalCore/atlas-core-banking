@@ -23,7 +23,7 @@ export class StatementController {
       // 2. A "Materialized View" Dinâmica: Agrupar por Dia, Tipo e Estado
       // Usamos $queryRaw para aceder ao poder total do PostgreSQL (DATE_TRUNC)
       const dailyStatements: any = await prisma.$queryRaw`
-        SELECT 
+        SELECT
           DATE_TRUNC('day', "createdAt") as "date",
           "type",
           "status",
@@ -43,8 +43,8 @@ export class StatementController {
         status: statement.status,
         total_volume: Number(statement.totalVolume).toFixed(2),
         transaction_count: statement.transactionCount,
-        description: statement.type === 'PROXY_INCOMING' 
-          ? `Lote de Depósitos (NEXOR)` 
+        description: statement.type === 'PROXY_INCOMING'
+          ? `Lote de Depósitos (NEXOR)`
           : `Lote de Saídas / Payouts`
       }));
 

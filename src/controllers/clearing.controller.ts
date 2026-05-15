@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma';
 import { Request, Response } from 'express';
 import { TransactionType, TransactionStatus, Currency } from '@prisma/client';
-import { prisma } from '../config/database';
+import prisma from '../lib/prisma';
 
 export class ClearingController {
   static async settleWallet(req: Request, res: Response) {

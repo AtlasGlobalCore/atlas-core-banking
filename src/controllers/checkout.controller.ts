@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { prisma } from '../config/database'; // AQUI ESTÁ A CORREÇÃO! O caminho exato da sua arquitetura.
+import prisma from '../lib/prisma';
 
 export const getCheckoutSession = async (req: Request, res: Response): Promise<void> => {
   try {
